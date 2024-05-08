@@ -84,7 +84,7 @@ pub async fn consume_next_message(sc: &SafeChannel, queue_name: &str, handle_del
     let mut consumer: Consumer = channel
         .basic_consume(
             queue_name,
-            "my_consumer",
+            "",
             BasicConsumeOptions::default(),
             FieldTable::default(),
         )
