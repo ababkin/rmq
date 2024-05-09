@@ -1,12 +1,12 @@
 use lapin::{
     options::*, publisher_confirm::PublisherConfirm, types::FieldTable, BasicProperties, 
-    Consumer, ConsumerDelegate
+    Consumer,
 };
-use anyhow::{*, Result, Error};
+use anyhow::*;
 use futures_util::stream::StreamExt;
 use futures_util::Future;
 use std::pin::Pin;
-
+use std::result::Result::Ok;
 
 // pub use lapin::{
 //     options::{BasicAckOptions, BasicConsumeOptions},
@@ -71,6 +71,46 @@ pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<Publis
 
 pub type AckFn = Box<dyn FnOnce(Delivery) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send>;
 pub type DeliveryHandler = Box<dyn Fn(Delivery, AckFn) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send>;
+
+pub async fn consume_normal(sc: &SafeChannel, queue_name: &str, handle_delivery: DeliveryHandler) -> Result<(), Error> {
+    let channel = sc.get().await?;
+
+    // Setting prefetch count to 1 to ensure that only one message is processed at a time
+    let options = BasicQosOptions {
+        global: false,      // Apply setting per consumer, not to the entire channel
+    };
+    channel.basic_qos(1, options).await?;
+
+    // info!("will consume");
+    let mut consumer = channel
+        .basic_consume(
+            "hello",
+            "my_consumer",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+    // info!(state=?conn.status().state());
+
+    while let Some(delivery_result) = consumer.next().await {
+        // info!(message=?delivery, "received message");
+        if let Ok(delivery) = delivery_result {
+
+            let ack: AckFn = Box::new(|dlv| {
+                Box::pin(async move {
+                    dlv.ack(BasicAckOptions::default()).await?;
+                    Ok(())
+                })
+            });
+
+            handle_delivery(delivery, ack).await?
+        }
+    };
+
+    Ok(())
+
+
+}
 
 pub async fn consume_next_message(sc: &SafeChannel, queue_name: &str, handle_delivery: DeliveryHandler) -> Result<(), Error> {
     let channel = sc.get().await?;
