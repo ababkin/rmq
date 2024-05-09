@@ -84,8 +84,8 @@ pub async fn consume_normal(sc: &SafeChannel, queue_name: &str, handle_delivery:
     // info!("will consume");
     let mut consumer = channel
         .basic_consume(
-            "hello",
-            "my_consumer",
+            queue_name,
+            "",
             BasicConsumeOptions::default(),
             FieldTable::default(),
         )
