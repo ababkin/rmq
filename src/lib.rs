@@ -8,13 +8,9 @@ use futures_util::Future;
 use std::pin::Pin;
 use std::result::Result::Ok;
 
-// pub use lapin::{
-//     options::{BasicAckOptions, BasicConsumeOptions},
-// };
 pub mod safe_channel;
 pub use safe_channel::SafeChannel;
 pub use lapin::{Queue, Channel};
-// pub use lapin::options::*;
 pub use lapin::message::Delivery;
 
 
@@ -44,13 +40,13 @@ pub async fn create_consumer(sc: &SafeChannel, queue: &'static str, consumer_tag
     .await?)
 }
 
-pub async fn ack(sc: &SafeChannel, delivery: &Delivery) -> Result<(), Error> {
-    let channel = sc.get().await?;
-    let delivery_tag = delivery.delivery_tag;
-    Ok(channel.basic_ack(
-        delivery_tag, BasicAckOptions::default()
-    ).await?)
-}
+// pub async fn ack(sc: &SafeChannel, delivery: &Delivery) -> Result<(), Error> {
+//     let channel = sc.get().await?;
+//     let delivery_tag = delivery.delivery_tag;
+//     Ok(channel.basic_ack(
+//         delivery_tag, BasicAckOptions::default()
+//     ).await?)
+// }
 
 pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<PublisherConfirm, Error> {
     let channel = sc.get().await?;
@@ -112,49 +108,12 @@ pub async fn consume_normal(sc: &SafeChannel, queue_name: &str, handle_delivery:
 
 }
 
-pub async fn consume_next_message(sc: &SafeChannel, queue_name: &str, handle_delivery: DeliveryHandler) -> Result<(), Error> {
-    let channel = sc.get().await?;
-
-    // Setting prefetch count to 1 to ensure that only one message is processed at a time
-    let options = BasicQosOptions {
-        global: false,      // Apply setting per consumer, not to the entire channel
-    };
-    channel.basic_qos(1, options).await?;
-
-    let mut consumer: Consumer = channel
-        .basic_consume(
-            queue_name,
-            "",
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-
-    match consumer.next().await {
-        Some(delivery_result) => {
-            let delivery = delivery_result?;
-
-            let ack: AckFn = Box::new(|dlv| {
-                Box::pin(async move {
-                    Ok(channel.basic_ack(dlv.delivery_tag, lapin::options::BasicAckOptions::default()).await?)
-                })
-            });
-
-            Ok(handle_delivery(delivery, ack).await?)
-        },
-        None => {
-            Err(anyhow!("could not get next message"))
-        }
-    }
-}
-
 
 pub async fn declare(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) -> Result<Queue, Error> {
     let chan = sc.get().await?;
 
     let queue = chan.queue_declare(
         name,
-        // QueueDeclareOptions::default(),
         opts,
         FieldTable::default(),
     ).await?;
