@@ -7,6 +7,7 @@ use futures_util::stream::StreamExt;
 use futures_util::Future;
 use std::pin::Pin;
 use std::result::Result::Ok;
+use std::sync::Arc; // Import Arc
 
 pub mod safe_channel;
 pub use safe_channel::SafeChannel;
@@ -39,14 +40,6 @@ pub async fn create_consumer(sc: &SafeChannel, queue: &'static str, consumer_tag
     )
     .await?)
 }
-
-// pub async fn ack(sc: &SafeChannel, delivery: &Delivery) -> Result<(), Error> {
-//     let channel = sc.get().await?;
-//     let delivery_tag = delivery.delivery_tag;
-//     Ok(channel.basic_ack(
-//         delivery_tag, BasicAckOptions::default()
-//     ).await?)
-// }
 
 pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<PublisherConfirm, Error> {
     let channel = sc.get().await?;
@@ -102,10 +95,50 @@ pub async fn consume_normal(sc: &SafeChannel, queue_name: &str, handle_delivery:
             handle_delivery(delivery, ack).await?
         }
     };
+    Ok(())
+}
+
+pub async fn consume_concurrently(sc: &SafeChannel, concurrency: usize, queue_name: &str, handle_delivery: DeliveryHandler) -> Result<(), Error> {
+    let channel = sc.get().await?;
+
+    // Setting prefetch count to match the concurrency limit
+    let options = BasicQosOptions {
+        global: false,      // Apply setting per consumer, not to the entire channel
+    };
+    channel.basic_qos(concurrency as u16, options).await?;
+
+    let consumer = channel
+        .basic_consume(
+            queue_name,
+            "",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+
+    let handle_delivery = Arc::new(handle_delivery);
+
+    // Process messages concurrently up to the specified limit
+    consumer.for_each_concurrent(concurrency, |delivery_result| {
+        let handle_delivery_clone = Arc::clone(&handle_delivery); // Clone the Arc for each task
+        async move {
+            if let Ok(delivery) = delivery_result {
+                let ack: AckFn = Box::new(|dlv| {
+                    Box::pin(async move {
+                        dlv.ack(BasicAckOptions::default()).await?;
+                        Ok(())
+                    })
+                });
+
+                // Use cloned handle_delivery in each async task
+                if let Err(e) = handle_delivery_clone(delivery, ack).await {
+                    eprintln!("Error handling message: {:?}", e);
+                }
+            }
+        }
+    }).await;
 
     Ok(())
-
-
 }
 
 
