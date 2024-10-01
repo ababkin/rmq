@@ -11,7 +11,11 @@ use std::sync::Arc; // Import Arc
 
 pub mod safe_channel;
 pub use safe_channel::SafeChannel;
-pub use lapin::{Queue, Channel};
+pub use lapin::{
+    options::ExchangeDeclareOptions,
+    options::QueueDeclareOptions,
+    Queue, Channel, ExchangeKind
+};
 pub use lapin::message::Delivery;
 
 
@@ -141,8 +145,7 @@ pub async fn consume_concurrently(sc: &SafeChannel, concurrency: usize, queue_na
     Ok(())
 }
 
-
-pub async fn declare(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) -> Result<Queue, Error> {
+pub async fn declare_queue(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) -> Result<Queue, Error> {
     let chan = sc.get().await?;
 
     let queue = chan.queue_declare(
@@ -154,9 +157,46 @@ pub async fn declare(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) ->
     Ok(queue)
 }
 
+pub async fn declare_exchange(sc: &SafeChannel, name: &str, kind: ExchangeKind, opts: ExchangeDeclareOptions) -> Result<(), Error> {
+    let chan = sc.get().await?;
+
+    chan.exchange_declare(
+        name,
+        kind,
+        opts,
+        FieldTable::default(),
+    ).await?;
+
+    Ok(())
+}
+
+// Bind a queue to an exchange with a routing key
+pub async fn bind_queue_to_exchange(sc: &SafeChannel, queue_name: &str, exchange_name: &str, routing_key: &str) -> Result<(), Error> {
+    let chan = sc.get().await?;
+
+    chan.queue_bind(
+        queue_name,
+        exchange_name,
+        routing_key,
+        QueueBindOptions::default(),
+        FieldTable::default(),
+    ).await?;
+
+    Ok(())
+}
+
+// Queue declare options with defaults
 pub fn normal_queue_opts() -> QueueDeclareOptions {
     QueueDeclareOptions {
-        durable: true,  // Set durable to true to make the queue survive broker restarts
+        durable: true,  // Queue survives broker restarts
         ..QueueDeclareOptions::default()
+    }
+}
+
+// Exchange declare options with defaults
+pub fn normal_exchange_opts() -> ExchangeDeclareOptions {
+    ExchangeDeclareOptions {
+        durable: true,  // Exchange survives broker restarts
+        ..ExchangeDeclareOptions::default()
     }
 }
