@@ -14,7 +14,8 @@ pub use safe_channel::SafeChannel;
 pub use lapin::{
     options::ExchangeDeclareOptions,
     options::QueueDeclareOptions,
-    Queue, Channel, ExchangeKind
+    Queue, Channel, ExchangeKind,
+    protocol::basic::AMQPProperties,
 };
 pub use lapin::message::Delivery;
 
@@ -45,7 +46,7 @@ pub async fn create_consumer(sc: &SafeChannel, queue: &'static str, consumer_tag
     .await?)
 }
 
-pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<PublisherConfirm, Error> {
+pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8], props: AMQPProperties) -> Result<PublisherConfirm, Error> {
     let channel = sc.get().await?;
 
     let (exchange_name, queue_name) = match target {
@@ -58,7 +59,10 @@ pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<Publis
         queue_name,
         BasicPublishOptions::default(),
         &msg,
-        BasicProperties::default().with_content_type("application/json".into()).with_delivery_mode(2),
+        // BasicProperties::default().with_content_type("application/json".into()).with_delivery_mode(2),
+        props
+            .with_content_type("application/json".into())
+            .with_delivery_mode(2),
     ).await?)
 }
 
