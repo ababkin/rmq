@@ -211,12 +211,12 @@ pub async fn declare_with_dq(
     Ok((main_queue, dead_queue))
 }
 
-pub async fn declare_exchange(sc: &SafeChannel, name: &str, kind: ExchangeKind, opts: ExchangeDeclareOptions) -> Result<(), Error> {
+pub async fn declare_exchange(sc: &SafeChannel, name: &str, opts: ExchangeDeclareOptions) -> Result<(), Error> {
     let chan = sc.get().await?;
 
     chan.exchange_declare(
         name,
-        kind,
+        ExchangeKind::Fanout,
         opts,
         FieldTable::default(),
     ).await?;
