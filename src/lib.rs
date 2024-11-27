@@ -15,6 +15,9 @@ use lapin::{
     publisher_confirm::PublisherConfirm, 
     BasicProperties, 
     Consumer,
+    Channel, 
+    ExchangeKind,
+    protocol::basic::AMQPProperties,
 };
 
 
@@ -44,6 +47,7 @@ pub async fn create_consumer(sc: &SafeChannel, queue: &'static str, consumer_tag
     .await?)
 }
 
+// pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8], props: AMQPProperties) -> Result<PublisherConfirm, Error> {
 pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<PublisherConfirm, Error> {
     let channel = sc.get().await?;
 
@@ -57,7 +61,11 @@ pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<Publis
         queue_name,
         BasicPublishOptions::default(),
         &msg,
-        BasicProperties::default().with_content_type("application/json".into()).with_delivery_mode(2),
+        // BasicProperties::default().with_content_type("application/json".into()).with_delivery_mode(2),
+        // props
+        BasicProperties::default()
+            .with_content_type("application/json".into())
+            .with_delivery_mode(2),
     ).await?)
 }
 
@@ -144,8 +152,7 @@ pub async fn consume_concurrently(sc: &SafeChannel, concurrency: usize, queue_na
     Ok(())
 }
 
-
-pub async fn declare(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) -> Result<Queue, Error> {
+pub async fn declare_queue(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) -> Result<Queue, Error> {
     let chan = sc.get().await?;
 
     let queue = chan.queue_declare(
@@ -204,9 +211,46 @@ pub async fn declare_with_dq(
     Ok((main_queue, dead_queue))
 }
 
+pub async fn declare_exchange(sc: &SafeChannel, name: &str, kind: ExchangeKind, opts: ExchangeDeclareOptions) -> Result<(), Error> {
+    let chan = sc.get().await?;
+
+    chan.exchange_declare(
+        name,
+        kind,
+        opts,
+        FieldTable::default(),
+    ).await?;
+
+    Ok(())
+}
+
+// Bind a queue to an exchange with a routing key
+pub async fn bind_queue_to_exchange(sc: &SafeChannel, queue_name: &str, exchange_name: &str, routing_key: &str) -> Result<(), Error> {
+    let chan = sc.get().await?;
+
+    chan.queue_bind(
+        queue_name,
+        exchange_name,
+        routing_key,
+        QueueBindOptions::default(),
+        FieldTable::default(),
+    ).await?;
+
+    Ok(())
+}
+
+// Queue declare options with defaults
 pub fn normal_queue_opts() -> QueueDeclareOptions {
     QueueDeclareOptions {
-        durable: true,  // Set durable to true to make the queue survive broker restarts
+        durable: true,  // Queue survives broker restarts
         ..QueueDeclareOptions::default()
+    }
+}
+
+// Exchange declare options with defaults
+pub fn normal_exchange_opts() -> ExchangeDeclareOptions {
+    ExchangeDeclareOptions {
+        durable: true,  // Exchange survives broker restarts
+        ..ExchangeDeclareOptions::default()
     }
 }
