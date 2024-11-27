@@ -170,6 +170,10 @@ pub async fn declare_with_dq(
     name: &str,
     opts: QueueDeclareOptions,
 ) -> Result<(Queue, Queue), Error> {
+    let q = declare_queue(sc, name, opts).await?;
+    Ok((q.clone(),q))
+
+    /*
     let chan = sc.get().await?;
 
     // Step 1: Declare the dead-letter exchange
@@ -232,6 +236,7 @@ pub async fn declare_with_dq(
 
     // Step 5: Return both queues
     Ok((main_queue, dead_queue))
+ */
 }
 
 pub async fn declare_exchange(sc: &SafeChannel, name: &str, opts: ExchangeDeclareOptions) -> Result<(), Error> {
