@@ -8,8 +8,8 @@ use std::sync::Arc; // Import Arc
 pub mod safe_channel;
 pub use safe_channel::SafeChannel;
 pub use lapin::options::{QueueDeclareOptions, ExchangeDeclareOptions}; 
+pub use lapin::message::Delivery;
 use lapin::{
-    message::Delivery,
     types::{FieldTable, ShortString},
     Queue,
     options::*, 
