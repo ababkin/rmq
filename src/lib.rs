@@ -172,7 +172,20 @@ pub async fn declare_with_dq(
 ) -> Result<(Queue, Queue), Error> {
     let chan = sc.get().await?;
 
-    // Declare the dead-letter queue
+    // Step 1: Declare the dead-letter exchange
+    let dead_exchange_name = "dead_letter_exchange";
+    chan.exchange_declare(
+        dead_exchange_name,
+        lapin::ExchangeKind::Direct,
+        lapin::options::ExchangeDeclareOptions {
+            durable: true,
+            ..Default::default()
+        },
+        FieldTable::default(),
+    )
+    .await?;
+
+    // Step 2: Declare the dead-letter queue
     let dead_queue_name = format!("{}_dq", name);
     let dead_queue = chan
         .queue_declare(
@@ -185,30 +198,39 @@ pub async fn declare_with_dq(
         )
         .await?;
 
-    // Add dead-letter arguments to the main queue
+    // Step 3: Bind the dead-letter queue to the dead-letter exchange
+    chan.queue_bind(
+        &dead_queue_name,
+        dead_exchange_name,
+        &dead_queue_name, // Routing key
+        lapin::options::QueueBindOptions::default(),
+        FieldTable::default(),
+    )
+    .await?;
+
+    // Step 4: Declare the main queue with dead-letter configuration
     let mut arguments = FieldTable::default();
     arguments.insert(
         ShortString::from("x-dead-letter-exchange"),
-        lapin::types::AMQPValue::ShortString("".into()), // Default exchange
+        lapin::types::AMQPValue::ShortString(dead_exchange_name.into()),
     );
     arguments.insert(
         ShortString::from("x-dead-letter-routing-key"),
-        lapin::types::AMQPValue::ShortString(dead_queue_name.into()),
-    );
-    arguments.insert(
-        ShortString::from("x-max-delivery-attempts"),
-        lapin::types::AMQPValue::LongInt(5),
+        lapin::types::AMQPValue::ShortString(dead_queue_name.clone().into()),
     );
 
-    // Declare the main queue with dead-letter setup
     let main_queue = chan
         .queue_declare(
             name,
-            opts,
+            QueueDeclareOptions {
+                durable: true,
+                ..opts // Use the provided options
+            },
             arguments,
         )
         .await?;
 
+    // Step 5: Return both queues
     Ok((main_queue, dead_queue))
 }
 
