@@ -7,6 +7,7 @@ use std::sync::Arc; // Import Arc
 
 pub mod safe_channel;
 pub use safe_channel::SafeChannel;
+pub use lapin::options::{QueueDeclareOptions, ExchangeDeclareOptions}; 
 use lapin::{
     message::Delivery,
     types::{FieldTable, ShortString},
