@@ -1,7 +1,3 @@
-use lapin::{
-    options::*, publisher_confirm::PublisherConfirm, types::FieldTable, BasicProperties, 
-    Consumer,
-};
 use anyhow::*;
 use futures_util::stream::StreamExt;
 use futures_util::Future;
@@ -11,8 +7,15 @@ use std::sync::Arc; // Import Arc
 
 pub mod safe_channel;
 pub use safe_channel::SafeChannel;
-pub use lapin::{Queue, Channel};
-pub use lapin::message::Delivery;
+use lapin::{
+    message::Delivery,
+    types::{FieldTable, ShortString},
+    Queue,
+    options::*, 
+    publisher_confirm::PublisherConfirm, 
+    BasicProperties, 
+    Consumer,
+};
 
 
 pub enum Target {
@@ -152,6 +155,53 @@ pub async fn declare(sc: &SafeChannel, name: &str, opts: QueueDeclareOptions) ->
     ).await?;
 
     Ok(queue)
+}
+
+pub async fn declare_with_dq(
+    sc: &SafeChannel,
+    name: &str,
+    opts: QueueDeclareOptions,
+) -> Result<(Queue, Queue), Error> {
+    let chan = sc.get().await?;
+
+    // Declare the dead-letter queue
+    let dead_queue_name = format!("{}_dq", name);
+    let dead_queue = chan
+        .queue_declare(
+            &dead_queue_name,
+            QueueDeclareOptions {
+                durable: true,
+                ..QueueDeclareOptions::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
+
+    // Add dead-letter arguments to the main queue
+    let mut arguments = FieldTable::default();
+    arguments.insert(
+        ShortString::from("x-dead-letter-exchange"),
+        lapin::types::AMQPValue::ShortString("".into()), // Default exchange
+    );
+    arguments.insert(
+        ShortString::from("x-dead-letter-routing-key"),
+        lapin::types::AMQPValue::ShortString(dead_queue_name.into()),
+    );
+    arguments.insert(
+        ShortString::from("x-max-delivery-attempts"),
+        lapin::types::AMQPValue::LongInt(5),
+    );
+
+    // Declare the main queue with dead-letter setup
+    let main_queue = chan
+        .queue_declare(
+            name,
+            opts,
+            arguments,
+        )
+        .await?;
+
+    Ok((main_queue, dead_queue))
 }
 
 pub fn normal_queue_opts() -> QueueDeclareOptions {
