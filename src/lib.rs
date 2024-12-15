@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use anyhow::*;
 use futures_util::stream::StreamExt;
 use futures_util::Future;
