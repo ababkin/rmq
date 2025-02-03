@@ -284,3 +284,42 @@ pub fn normal_exchange_opts() -> ExchangeDeclareOptions {
         ..ExchangeDeclareOptions::default()
     }
 }
+
+// Add this new function to handle a single message
+pub async fn consume_single_message(sc: &SafeChannel, queue_name: &str, handle_delivery: DeliveryHandler) -> Result<bool, Error> {
+    let channel = sc.get().await?;
+
+    // Set prefetch to 1 since we're handling one message at a time
+    let options = BasicQosOptions {
+        global: false,
+    };
+    channel.basic_qos(1, options).await?;
+
+    let mut consumer = channel
+        .basic_consume(
+            queue_name,
+            "",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+
+    // Try to get just one message
+    if let Some(delivery_result) = consumer.next().await {
+        if let Ok(delivery) = delivery_result {
+            let ack: AckFn = Box::new(|dlv| {
+                Box::pin(async move {
+                    dlv.ack(BasicAckOptions::default()).await?;
+                    Ok(())
+                })
+            });
+
+            handle_delivery(delivery, ack).await?;
+            Ok(true) // Message was processed
+        } else {
+            Ok(false) // No message or error
+        }
+    } else {
+        Ok(false) // No message available
+    }
+}
