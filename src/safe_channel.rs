@@ -31,7 +31,7 @@ impl SafeChannel {
                 },
                 Err(e) => {
                     error!("Failed to create channel: {:?}", e);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await; // Wait before retrying
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await; // Wait before retrying
                 }
             }
         }
