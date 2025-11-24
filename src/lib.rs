@@ -23,7 +23,6 @@ use lapin::{
     protocol::basic::AMQPProperties,
 };
 
-
 pub enum Target {
     Exchange(String),
     Queue(String)
@@ -50,26 +49,50 @@ pub async fn create_consumer(sc: &SafeChannel, queue: &'static str, consumer_tag
     .await?)
 }
 
-// pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8], props: AMQPProperties) -> Result<PublisherConfirm, Error> {
 pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<PublisherConfirm, Error> {
-    let channel = sc.get().await?;
+    let mut retries = 3;
+    let mut last_error = None;
 
-    let (exchange_name, queue_name) = match target {
-        Target::Exchange(exchange_name) => (exchange_name.as_str(), ""),
-        Target::Queue(queue_name) => ("", queue_name.as_str())
-    };
+    while retries > 0 {
+        let channel = match sc.get().await {
+            Ok(chan) => chan,
+            Err(e) => return Err(e),
+        };
 
-    Ok(channel.basic_publish(
-        exchange_name,
-        queue_name,
-        BasicPublishOptions::default(),
-        &msg,
-        // BasicProperties::default().with_content_type("application/json".into()).with_delivery_mode(2),
-        // props
-        BasicProperties::default()
-            .with_content_type("application/json".into())
-            .with_delivery_mode(2),
-    ).await?)
+        let (exchange_name, queue_name) = match target {
+            Target::Exchange(exchange_name) => (exchange_name.as_str(), ""),
+            Target::Queue(queue_name) => ("", queue_name.as_str())
+        };
+
+        match channel.basic_publish(
+            exchange_name,
+            queue_name,
+            BasicPublishOptions::default(),
+            &msg,
+            BasicProperties::default()
+                .with_content_type("application/json".into())
+                .with_delivery_mode(2),
+        ).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                // Check if this is a channel state error
+                if e.to_string().contains("invalid channel state") {
+                    // Invalidate the channel so a new one will be created on retry
+                    sc.invalidate().await;
+                    last_error = Some(Error::from(e));
+                    retries -= 1;
+                    // Small delay before retry
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                } else {
+                    // For other errors, don't retry
+                    return Err(Error::from(e));
+                }
+            }
+        }
+    }
+
+    // If we've exhausted retries, return the last error
+    Err(last_error.unwrap_or_else(|| anyhow!("Failed to publish message after retries")))
 }
 
 pub type AckFn = Box<dyn FnOnce(Delivery) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send>;

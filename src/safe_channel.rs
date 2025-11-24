@@ -9,28 +9,38 @@ use tracing::{error, info, debug, warn, Level};
 pub struct SafeChannel {
     channel: Mutex<Option<Channel>>,
     url: String,
+    connection: Mutex<Option<Connection>>,
 }
 
 impl SafeChannel {
     pub fn new(url: String) -> Self {
         SafeChannel{ 
             channel: Mutex::new(None),
+            connection: Mutex::new(None),
             url
         }
     }
 
     pub async fn ensure(&self) {
         loop {
-            debug!("Trying to open RabbitMQ channel...");
-            match create(&self.url).await {
-                Ok(chan) => {
-                    let mut locked = self.channel.lock().await;
-                    *locked = Some(chan);
-                    debug!("RabbitMQ channel is established.");
+            debug!("Trying to open RabbitMQ connection and channel...");
+            match create_connection_and_channel(&self.url).await {
+                Ok((conn, chan)) => {
+                    {
+                        let mut conn_locked = self.connection.lock().await;
+                        *conn_locked = Some(conn);
+                    }
+                    
+                    {
+                        let mut chan_locked = self.channel.lock().await;
+                        *chan_locked = Some(chan);
+                    }
+                    
+                    debug!("RabbitMQ connection and channel are established.");
                     break;
                 },
                 Err(e) => {
-                    error!("Failed to create channel: {:?}", e);
+                    error!("Failed to create connection or channel: {:?}", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await; // Wait before retrying
                 }
             }
@@ -38,8 +48,21 @@ impl SafeChannel {
     }
 
     pub async fn invalidate(&self) -> () {
-        let mut lock = self.channel.lock().await;
-        *lock = None;
+        debug!("Invalidating RabbitMQ channel and connection");
+        {
+            let mut chan_lock = self.channel.lock().await;
+            *chan_lock = None;
+        }
+        
+        {
+            let mut conn_lock = self.connection.lock().await;
+            if let Some(conn) = conn_lock.take() {
+                // Close the connection gracefully if possible
+                if let Err(e) = conn.close(200, "Reconnecting").await {
+                    error!("Error while closing connection: {:?}", e);
+                }
+            }
+        }
     }
 
     pub async fn get(&self) -> Result<Channel, Error> {
@@ -47,19 +70,28 @@ impl SafeChannel {
             {
                 let lock = self.channel.lock().await;
                 if let Some(channel) = &*lock {
-                    return Ok(channel.clone());  // Clone the channel before returning
+                    // Check if channel is still in a good state
+                    if channel.status().connected() {
+                        return Ok(channel.clone());  // Clone the channel before returning
+                    }
+                    // If we get here, the channel exists but is not connected
+                    drop(lock); // Drop the lock before calling invalidate
+                    warn!("RabbitMQ channel is not connected, invalidating...");
+                    self.invalidate().await;
+                } else {
+                    // No channel, drop lock and call ensure
+                    drop(lock);
+                    warn!("RabbitMQ channel not initialized, attempting to connect...");
+                    self.ensure().await;
                 }
             }
-            warn!("RabbitMQ channel lost, attempting to reconnect...");
-            self.ensure().await;
-            // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await; // Wait before retrying
         }
     }
-
 }
 
-async fn create(url: &str) -> Result<Channel, lapin::Error> {
+async fn create_connection_and_channel(url: &str) -> Result<(Connection, Channel), lapin::Error> {
     let conn = Connection::connect(url, ConnectionProperties::default()).await?;
-    conn.create_channel().await
+    let channel = conn.create_channel().await?;
+    Ok((conn, channel))
 }
 
