@@ -96,7 +96,14 @@ pub async fn enq(sc: &SafeChannel, target: &Target, msg: &[u8]) -> Result<Publis
 }
 
 pub type AckFn = Box<dyn FnOnce(Delivery) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send>;
-pub type DeliveryHandler = Box<dyn Fn(Delivery, AckFn) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send>;
+pub type DeliveryHandler = Box<
+    dyn Fn(
+        Delivery,
+        Box<dyn FnOnce(Delivery) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send>
+    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>
+    + Send
+    + Sync
+>;
 
 pub async fn consume_normal(sc: &SafeChannel, queue_name: &str, handle_delivery: DeliveryHandler) -> Result<(), Error> {
     let channel = sc.get().await?;
