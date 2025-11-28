@@ -2,7 +2,7 @@ use std::env;
 use tokio::sync::Mutex;
 use lapin::{ Channel, Connection, ConnectionProperties };
 use anyhow::{ Result, Error };
-use tracing::{error, info, debug, warn, Level};
+use log::{error, info, debug, warn};
 
 
 #[derive(Debug)]
