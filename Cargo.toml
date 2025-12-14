@@ -10,4 +10,7 @@ anyhow = "1.0.82"
 lapin = "2.3"
 tokio = { version = "1.37", features = ["full"] }
 log = "0.4"
-futures-util = "0.3.30" 
+futures-util = "0.3.30"
+
+[dev-dependencies]
+env_logger = "0.11" 
