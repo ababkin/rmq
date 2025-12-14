@@ -1,8 +1,6 @@
-#![allow(unused_imports)]
-
 use anyhow::*;
 use futures_util::stream::StreamExt;
-use log::{error, warn, info, debug};
+use log::{error, warn, info};
 use std::sync::Arc;
 use std::time::Duration;
 use std::result::Result as StdResult;
@@ -11,19 +9,16 @@ pub mod connection;
 
 pub use lapin::{
     Connection,
-    Channel,
     options::{QueueDeclareOptions, ExchangeDeclareOptions, BasicPublishOptions, BasicConsumeOptions, BasicAckOptions, BasicNackOptions, BasicQosOptions, QueueBindOptions},
-    types::{FieldTable, ShortString},
+    types::FieldTable,
     Queue,
     ExchangeKind,
     BasicProperties,
-    Consumer,
     message::Delivery,
     publisher_confirm::PublisherConfirm,
 };
 
-// Re-export connection utilities
-pub use connection::{connect, create_channel};
+pub use connection::connect;
 
 /// Publish a message with automatic retry on channel errors
 pub async fn publish(
@@ -135,7 +130,7 @@ pub async fn bind_queue(
 
 /// Consumer handler type - takes Delivery and processes it
 /// Handler is responsible for acking/nacking the message
-pub type MessageHandler = Arc<dyn Fn(Delivery) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send + Sync>;
+type MessageHandler = Arc<dyn Fn(Delivery) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send + Sync>;
 
 /// Consume messages from a queue with automatic reconnection
 /// This blocks forever, processing messages as they arrive
@@ -202,7 +197,7 @@ async fn consume_once(
     Ok(())
 }
 
-/// Compatibility: Declare queue with dead-letter queue (returns same queue twice for now)
+/// Declare queue with dead-letter queue (returns same queue twice for now)
 pub async fn declare_with_dq(
     connection: &Connection,
     name: &str,
@@ -212,7 +207,7 @@ pub async fn declare_with_dq(
     Ok((q.clone(), q))
 }
 
-/// Compatibility: Normal queue options (durable)
+/// Durable queue options
 pub fn normal_queue_opts() -> QueueDeclareOptions {
     QueueDeclareOptions {
         durable: true,
@@ -220,15 +215,8 @@ pub fn normal_queue_opts() -> QueueDeclareOptions {
     }
 }
 
-/// Compatibility: Normal exchange options (durable)
-pub fn normal_exchange_opts() -> ExchangeDeclareOptions {
-    ExchangeDeclareOptions {
-        durable: true,
-        ..Default::default()
-    }
-}
 
-/// Compatibility: Bind queue to exchange (alias)
+/// Bind queue to exchange
 pub async fn bind_queue_to_exchange(
     connection: &Connection,
     queue_name: &str,
@@ -254,7 +242,7 @@ impl Target {
     }
 }
 
-/// Compatibility: Enqueue message (publish to exchange or queue)
+/// Publish message to exchange or queue
 pub async fn enq(
     connection: &Connection,
     target: &Target,
@@ -278,7 +266,7 @@ pub type DeliveryHandler = Box<
 
 pub type AckFn = Box<dyn FnOnce(Delivery) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send>;
 
-/// Compatibility: Consume concurrently
+/// Consume messages concurrently with old callback-style handler
 pub async fn consume_concurrently(
     connection: &Connection,
     concurrency: usize,
