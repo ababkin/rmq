@@ -11,7 +11,7 @@ pub use connection::{connect, ResilientConnection};
 
 pub use lapin::{
     Connection,
-    options::{QueueDeclareOptions, ExchangeDeclareOptions, BasicPublishOptions, BasicConsumeOptions, BasicAckOptions, BasicNackOptions, BasicQosOptions, QueueBindOptions},
+    options::{QueueDeclareOptions, ExchangeDeclareOptions, BasicPublishOptions, BasicConsumeOptions, BasicAckOptions, BasicNackOptions, BasicQosOptions, QueueBindOptions, BasicGetOptions},
     types::FieldTable,
     Queue,
     ExchangeKind,
